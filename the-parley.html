@@ -214,10 +214,13 @@
                     <div class="mb-6">
                         <label class="block text-sm font-medium mb-3">Organization Mode</label>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div @click="config.organization_mode = 'flat'" :class="config.organization_mode === 'flat' ? 'selected' : ''" class="mode-card card border-2 p-4">
-                                <h3 class="font-semibold mb-1">Flat</h3>
-                                <p class="text-sm text-gray-600 mb-2">All files in one folder</p>
-                                <p class="text-xs text-gray-500">Best for <100 conversations</p>
+                            <div @click="config.organization_mode = 'flat'" :class="config.organization_mode === 'flat' ? 'selected' : ''" class="mode-card card border-2 p-4 relative">
+                                <div class="absolute top-2 right-2">
+                                    <span class="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded">Cherry Ready</span>
+                                </div>
+                                <h3 class="font-semibold mb-1">Flat (Cherry Import)</h3>
+                                <p class="text-sm text-gray-600 mb-2">Single folder, date-prefixed filenames</p>
+                                <p class="text-xs text-gray-500">Markdown only, no assets</p>
                             </div>
                             <div @click="config.organization_mode = 'category'" :class="config.organization_mode === 'category' ? 'selected' : ''" class="mode-card card border-2 p-4">
                                 <h3 class="font-semibold mb-1">By Category</h3>
@@ -301,7 +304,10 @@
                         </svg>
                     </div>
                     <h2 class="text-3xl font-bold mb-4">Conversion Complete!</h2>
-                    <p class="text-gray-600 mb-8">Your markdown files are ready for download</p>
+                    <p class="text-gray-600 mb-2">Your markdown files are ready for download</p>
+                    <p class="text-sm text-purple-600 mb-8" x-show="config.organization_mode === 'flat'">
+                        ✨ Flat file structure with date-prefixed filenames - ready for Cherry import!
+                    </p>
 
                     <button @click="downloadZip()" class="btn-primary px-10 py-4 font-semibold rounded-lg mb-6 inline-flex items-center space-x-2">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -314,10 +320,17 @@
                         <div class="space-y-2 text-sm">
                             <div class="flex justify-between"><span class="text-gray-600">Conversations:</span><span class="font-semibold" x-text="totalCount"></span></div>
                             <div class="flex justify-between"><span class="text-gray-600">Organization:</span><span class="font-semibold uppercase" x-text="config.organization_mode"></span></div>
-                            <div class="flex justify-between"><span class="text-gray-600">Audio:</span><span class="font-semibold" x-text="audioFilesCopied"></span></div>
-                            <div class="flex justify-between"><span class="text-gray-600">Video:</span><span class="font-semibold" x-text="videoFilesCopied"></span></div>
-                            <div class="flex justify-between"><span class="text-gray-600">Images:</span><span class="font-semibold" x-text="imageFilesCopied"></span></div>
-                            <div class="flex justify-between"><span class="text-gray-600">DALL-E:</span><span class="font-semibold" x-text="dalleFilesCopied"></span></div>
+                            <template x-if="config.organization_mode !== 'flat'">
+                                <div>
+                                    <div class="flex justify-between"><span class="text-gray-600">Audio:</span><span class="font-semibold" x-text="audioFilesCopied"></span></div>
+                                    <div class="flex justify-between"><span class="text-gray-600">Video:</span><span class="font-semibold" x-text="videoFilesCopied"></span></div>
+                                    <div class="flex justify-between"><span class="text-gray-600">Images:</span><span class="font-semibold" x-text="imageFilesCopied"></span></div>
+                                    <div class="flex justify-between"><span class="text-gray-600">DALL-E:</span><span class="font-semibold" x-text="dalleFilesCopied"></span></div>
+                                </div>
+                            </template>
+                            <template x-if="config.organization_mode === 'flat'">
+                                <div class="flex justify-between"><span class="text-gray-600">Format:</span><span class="font-semibold text-purple-600">Markdown Only</span></div>
+                            </template>
                         </div>
                     </div>
 
@@ -342,7 +355,14 @@
                                 <!-- Extract Files -->
                                 <div>
                                     <h4 class="font-semibold text-lg mb-2">1. Extract Your Markdown Files</h4>
-                                    <p class="text-gray-700">Extract the ZIP file you just downloaded and locate the <code>MarkdownFiles</code> folder.</p>
+                                    <p class="text-gray-700 mb-2">Extract the ZIP file you just downloaded and locate the <code>MarkdownFiles</code> folder.</p>
+                                    <template x-if="config.organization_mode === 'flat'">
+                                        <div class="bg-purple-50 border-l-4 border-purple-500 p-3 text-sm">
+                                            <p class="text-purple-800">
+                                                <strong>💡 Flat File Structure:</strong> All markdown files are in a single folder with date-prefixed filenames (YYYY-MM-DD_Title.md), making it easy to select all files in one gesture for import into Cherry.
+                                            </p>
+                                        </div>
+                                    </template>
                                 </div>
 
                                 <!-- Setup OpenAI Embeddings -->
@@ -745,6 +765,9 @@
                     if (!parts?.length) return '';
                     const content = [];
 
+                    // Skip all asset processing if in flat mode (Cherry import mode)
+                    const skipAssets = this.config.organization_mode === 'flat';
+
                     for (const part of parts) {
                         if (typeof part === 'string') {
                             // Convert URLs to markdown links
@@ -761,6 +784,8 @@
 
                             // Handle image assets
                             if (type === 'image_asset_pointer') {
+                                if (skipAssets) continue; // Skip in flat mode
+
                                 const fileId = this.extractFileId(part.asset_pointer || '');
                                 if (fileId) {
                                     const result = await this.copyAssetFile(fileId, zipContent, imagesFolder, dalleFolder, null);
@@ -773,6 +798,8 @@
                             }
                             // Handle audio/video assets
                             else if (type === 'audio_asset_pointer' || type === 'real_time_user_audio_video_asset_pointer') {
+                                if (skipAssets) continue; // Skip in flat mode
+
                                 // Process audio
                                 let audioPointer = null, audioDuration = null;
                                 if (type === 'audio_asset_pointer') {
@@ -895,7 +922,19 @@
 
                 getConversationPath(conv) {
                     const title = (conv.title || 'Untitled').replace(/[^a-z0-9_\- ]/gi, '').trim() || 'conversation';
-                    const filename = `${title.replace(/\s+/g, '_')}.md`;
+                    let filename;
+
+                    // Include date prefix in flat mode for Cherry import
+                    if (this.config.organization_mode === 'flat' && conv.create_time) {
+                        const date = new Date(conv.create_time * 1000);
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        filename = `${year}-${month}-${day}_${title.replace(/\s+/g, '_')}.md`;
+                    } else {
+                        filename = `${title.replace(/\s+/g, '_')}.md`;
+                    }
+
                     const mode = this.config.organization_mode;
                     const base = 'MarkdownFiles/';
                     let category = null;

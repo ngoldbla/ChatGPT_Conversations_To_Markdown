@@ -117,6 +117,9 @@ def _process_message_parts(parts, input_base_path, output_base, config, conversa
     content_pieces = []
     attachments = []
 
+    # Skip all asset processing if in flat mode (Cherry import mode)
+    skip_assets = config.get('organization_mode', 'flat') == 'flat'
+
     for part in parts:
         if isinstance(part, str):
             # Regular text content
@@ -125,6 +128,10 @@ def _process_message_parts(parts, input_base_path, output_base, config, conversa
             content_type = part.get('content_type', '')
 
             if content_type == 'image_asset_pointer':
+                if skip_assets:
+                    # Skip image assets in flat mode
+                    continue
+
                 # Image attachment
                 asset_pointer = part.get('asset_pointer', '')
                 file_id = extract_file_id(asset_pointer)
@@ -140,6 +147,10 @@ def _process_message_parts(parts, input_base_path, output_base, config, conversa
                             content_pieces.append(f"![Image]({rel_path})")
 
             elif content_type in ['audio_asset_pointer', 'real_time_user_audio_video_asset_pointer']:
+                if skip_assets:
+                    # Skip audio/video assets in flat mode
+                    continue
+
                 # Audio/Video content - try to embed audio file
                 asset_pointer = None
                 duration = None
@@ -370,8 +381,12 @@ def process_conversations(data, output_dir, config, input_base_path):
         conversation_dir = get_conversation_path(entry, config, output_base)
         conversation_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create filename
-        file_name = f"{config['file_name_format'].format(title=sanitized_title.replace(' ', '_').replace('/', '_'))}.md"
+        # Create filename - include date prefix in flat mode for Cherry import
+        if config.get('organization_mode', 'flat') == 'flat' and create_time:
+            date_prefix = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d')
+            file_name = f"{date_prefix}_{sanitized_title.replace(' ', '_').replace('/', '_')}.md"
+        else:
+            file_name = f"{config['file_name_format'].format(title=sanitized_title.replace(' ', '_').replace('/', '_'))}.md"
         file_path = conversation_dir / file_name
 
         # Write messages to file
@@ -445,7 +460,11 @@ def main():
         process_conversations(data, str(output_dir), config, str(input_base_path))
 
     print(f"\n✅ All Done! You can access your files here: {output_dir}")
-    print(f"📁 Created markdown files with embedded images and audio.")
+    if config.get('organization_mode', 'flat') == 'flat':
+        print(f"📁 Created markdown files in flat structure (Cherry import ready)")
+        print(f"💡 All files are in a single folder with date prefixes, no assets included")
+    else:
+        print(f"📁 Created markdown files with embedded images and audio.")
     print(f"🗂️  Organization mode: {config.get('organization_mode', 'flat').upper()}")
 
 if __name__ == "__main__":
